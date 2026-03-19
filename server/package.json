@@ -32,7 +32,6 @@
     "sequelize-cli": "^6.6.5"
   },
   "devDependencies": {
-    "@prisma/client": "^5.10.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
