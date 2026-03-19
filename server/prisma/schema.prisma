@@ -1,0 +1,295 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+  REVIEWER
+  CLO
+  SUPERVISOR
+  LO
+  APPROVER
+}
+
+enum AgreementStatus {
+  DRAFT
+  PENDING_REVIEW
+  REVISION_REQUIRED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXECUTED
+  ARCHIVED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  department String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agreementsCreated Agreement[] @relation("CreatedBy")
+  versionsUploaded  AgreementVersion[]
+  comments          Comment[]
+  actions           ActionLog[]
+  notifications     Notification[]
+  approvalRequests  ApprovalRequest[]
+  
+  // Legal Case Management Relations
+  casesCreated      Case[]           @relation("CaseCreator")
+  casesAssigned     Case[]           @relation("CaseAssignedTo")
+  caseDocsUploaded  CaseDocument[]
+  initialDocs       InitialDocVersion[]
+  changeRequests    ChangeRequest[]  @relation("ChangeRequestRequester")
+  changeReviews     ChangeRequest[]  @relation("ChangeRequestReviewer")
+  caseActionLogs    CaseActionLog[]
+}
+
+model Agreement {
+  id             String          @id @default(uuid())
+  title          String
+  type           String
+  parties        Json
+  value          Float?
+  duration       String?
+  status         AgreementStatus @default(DRAFT)
+  caseId         String?         // Link to Sub-System 1
+  case           Case?           @relation(fields: [caseId], references: [id]) 
+  createdById    String
+  createdBy      User            @relation("CreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  expiryDate     DateTime?
+  
+  versions       AgreementVersion[]
+  comments       Comment[]
+  actions        ActionLog[]
+  approvalRequests ApprovalRequest[]
+  notifications Notification[]
+}
+
+// ... existing Agreement related models ...
+
+// --- Legal Case Handling Sub-System Models ---
+
+enum CaseStatus {
+  NEW
+  ACTIVE
+  ON_HOLD
+  CLOSED
+}
+
+enum InitialDocStatus {
+  DRAFT
+  PENDING_APPROVAL
+  REVISION_REQUIRED
+  APPROVED
+  REJECTED
+}
+
+enum CasePriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CaseEventType {
+  HEARING
+  DEADLINE
+  OTHER
+}
+
+model Case {
+  id                String           @id @default(uuid())
+  referenceNumber   String           @unique // e.g., CASE-2024-001
+  title             String
+  description       String?
+  type              String           // Money Recovery, Land, etc.
+  status            CaseStatus       @default(NEW)
+  priority          CasePriority     @default(MEDIUM)
+  
+  // Court & Filing Details
+  court             String?
+  judge             String?
+  filingDate        DateTime?
+  location          String?
+  
+  // Financials
+  financialExposure Float?
+  
+  // Initial Document State
+  initialDocStatus  InitialDocStatus @default(DRAFT)
+  requiresLegalOfficer Boolean      @default(true)
+  
+  // JSONB for dynamic fields (Parties, Claim Amount, Land Ref, etc.)
+  parties           Json?
+  metadata          Json?            // For flexible attributes not in main columns
+  
+  // Relations
+  createdById       String
+  createdBy         User             @relation("CaseCreator", fields: [createdById], references: [id])
+  
+  assignedLoId      String?
+  assignedLo        User?            @relation("CaseAssignedTo", fields: [assignedLoId], references: [id])
+  
+  attributes        CaseAttribute[]
+  documents         CaseDocument[]
+  events            CaseEvent[]
+  initialDocVersions InitialDocVersion[]
+  changeRequests    ChangeRequest[]
+  agreements        Agreement[]
+  notifications     Notification[]
+  actionLogs        CaseActionLog[]
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model CaseAttribute {
+  id        String @id @default(uuid())
+  caseId    String
+  case      Case   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  key       String
+  value     String // Store simple values or stringified JSON
+}
+
+model InitialDocVersion {
+  id            String           @id @default(uuid())
+  caseId        String
+  case          Case             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  version       Int
+  content       Json             // Snapshot of all initial doc fields
+  status        InitialDocStatus
+  createdById   String
+  createdBy     User             @relation(fields: [createdById], references: [id])
+  createdAt     DateTime         @default(now())
+  remarks       String?          // Supervisor remarks
+}
+
+model CaseDocument {
+  id           String   @id @default(uuid())
+  caseId       String
+  case         Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  title        String
+  category     String   // Pleading, Evidence, Order, etc.
+  filePath     String
+  fileType     String?
+  fileSize     Int?
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+  version      Int      @default(1)
+}
+
+model CaseEvent {
+  id          String        @id @default(uuid())
+  caseId      String
+  case        Case          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  title       String
+  type        CaseEventType
+  date        DateTime
+  location    String?
+  description String?
+  createdAt   DateTime      @default(now())
+}
+
+model CaseActionLog {
+  id          String    @id @default(uuid())
+  caseId      String
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  action      String    // CREATED, SUBMITTED, APPROVED, REJECTED, ASSIGNED, TYPE_CHANGE_REQUESTED, TYPE_CHANGE_APPROVED, TYPE_CHANGE_REJECTED
+  details     String?
+  timestamp   DateTime  @default(now())
+}
+
+model ChangeRequest {
+  id            String              @id @default(uuid())
+  caseId        String
+  case          Case                @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy   User                @relation("ChangeRequestRequester", fields: [requestedById], references: [id])
+  type          String              // CASE_TYPE, INITIAL_DOC_EDIT
+  data          Json                // specific changes usually
+  status        ChangeRequestStatus @default(PENDING)
+  reviewerId    String?
+  reviewer      User?               @relation("ChangeRequestReviewer", fields: [reviewerId], references: [id])
+  remarks       String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+}
+
+model AgreementVersion {
+  id            String    @id @default(uuid())
+  agreementId   String
+  agreement     Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  filePath      String
+  uploadedById  String?
+  uploadedBy    User?     @relation(fields: [uploadedById], references: [id])
+  changeLog     String?
+  createdAt     DateTime  @default(now())
+}
+
+model Comment {
+  id          String    @id @default(uuid())
+  agreementId String
+  agreement   Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  content     String
+  createdAt   DateTime  @default(now())
+}
+
+model ActionLog {
+  id          String    @id @default(uuid())
+  agreementId String
+  agreement   Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  action      String    // CREATED, REVIEWED, APPROVED, REJECTED, etc.
+  details     String?
+  timestamp   DateTime  @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agreementId String?
+  agreement Agreement? @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  caseId    String?
+  case      Case?      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model ApprovalRequest {
+  id          String   @id @default(uuid())
+  agreementId String
+  agreement   Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  approverId  String
+  approver    User     @relation(fields: [approverId], references: [id])
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  remarks     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
