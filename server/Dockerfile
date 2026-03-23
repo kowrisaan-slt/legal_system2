@@ -1,25 +1,22 @@
-FROM node:18
+FROM node:24  # upgrade Node version to match Prisma
 
 WORKDIR /app
 
-# Install dependencies
+# Copy package.json & install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy app code
+# Copy all code
 COPY . .
 
 # Generate Prisma client at build time
 RUN npx prisma generate
 
-# Ensure proper permissions for OpenShift non-root user
-RUN chown -R 1001:0 /app
-
-# Switch to non-root OpenShift user
-USER 1001
-
 # Expose port
 EXPOSE 5000
 
-# Start app
+# Run app as non-root user (OpenShift default)
+USER 1001
+
+# Start server
 CMD ["npm", "start"]
