@@ -2,21 +2,24 @@ FROM node:18
 
 WORKDIR /app
 
-# Copy package.json first to leverage caching
+# Install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy the app
+# Copy app code
 COPY . .
 
-# Make prisma folder writable for OpenShift random UID
-RUN mkdir -p node_modules/prisma && chown -R 1001:0 node_modules/prisma
+# Generate Prisma client at build time
+RUN npx prisma generate
 
-# Use non-root user
+# Ensure proper permissions for OpenShift non-root user
+RUN chown -R 1001:0 /app
+
+# Switch to non-root OpenShift user
 USER 1001
 
 # Expose port
 EXPOSE 5000
 
-# Generate Prisma client at runtime and start server
-CMD ["sh", "-c", "npx prisma generate && npm start"]
+# Start app
+CMD ["npm", "start"]
