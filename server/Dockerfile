@@ -1,12 +1,13 @@
-FROM node:24  # upgrade Node version to match Prisma
+# Use Red Hat UBI Node image to avoid Docker Hub rate limits
+FROM registry.redhat.io/nodejs-24/nodejs-24:latest
 
 WORKDIR /app
 
-# Copy package.json & install dependencies
+# Copy package.json and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# Copy all code
+# Copy app code
 COPY . .
 
 # Generate Prisma client at build time
@@ -15,8 +16,8 @@ RUN npx prisma generate
 # Expose port
 EXPOSE 5000
 
-# Run app as non-root user (OpenShift default)
+# Run as OpenShift default user
 USER 1001
 
-# Start server
+# Start app
 CMD ["npm", "start"]
