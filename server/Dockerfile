@@ -2,13 +2,15 @@ FROM node:18
 
 WORKDIR /app
 
+# Install dependencies
 COPY package*.json ./
 RUN npm install
 
+# Copy app code
 COPY . .
 
-RUN npx prisma generate
-
+# Expose port for OpenShift
 EXPOSE 5000
 
-CMD ["npm", "start"]
+# Generate Prisma client at runtime, then start server
+CMD ["sh", "-c", "npx prisma generate && npm start"]
